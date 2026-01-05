@@ -1,0 +1,115 @@
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: flex;
+  height: 100vh;
+  margin: 0;
+  background-color: #f0f2f5;
+}
+
+.sidebar {
+  width: 350px;
+  padding: 20px;
+  background-color: #ffffff;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+h1 {
+  font-size: 1.5rem;
+  color: #333;
+  margin: 0 0 10px 0;
+  text-align: center;
+}
+
+.control-group {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.control-group label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #495057;
+}
+
+input[type=range] {
+  width: 100%;
+  cursor: pointer;
+}
+
+.btn-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.btn-group.single {
+  grid-template-columns: 1fr;
+}
+
+button {
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+button#playBtn {
+  background-color: #28a745;
+  color: white;
+  grid-column: span 2;
+}
+
+button#playBtn:hover {
+  background-color: #218838;
+}
+
+button#stopBtn {
+  background-color: #dc3545;
+  color: white;
+}
+
+button#stopBtn:hover {
+  background-color: #c82333;
+}
+
+button#resetBtn {
+  background-color: #6c757d;
+  color: white;
+}
+
+button#resetBtn:hover {
+  background-color: #5a6268;
+}
+
+#status {
+  padding: 15px;
+  background-color: #e3f2fd;
+  border-left: 5px solid #2196f3;
+  color: #0d47a1;
+  font-weight: bold;
+  border-radius: 4px;
+}
+
+.canvas-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #e9ecef;
+}
+
+canvas {
+  background: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
