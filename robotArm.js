@@ -62,7 +62,7 @@ var GROUND_WIDTH = 40.0;
 var GROUND_HEIGHT = 0.5;
 
 // Initial angles: Base, Lower, Upper, Gripper Base, Gripper
-var theta = [0, 0, 0, 0, 40];
+var theta = [0, 0, 0, 0, 60];
 
 var modelViewMatrixLoc;
 
@@ -149,6 +149,31 @@ function handleAnimation() {
       }
     }
   }
+
+  // Pick/Drop Logic based on Angle
+  if (theta[Gripper] <= 45) {
+    if (!isObjectPicked) {
+      isObjectPicked = true;
+    }
+  } else {
+    // Angle > 45 (Open)
+    if (isObjectPicked) {
+      isObjectPicked = false;
+
+      // Update Object Position Logic
+      if (!isReturnCycle) {
+        // Cycle 1: Dropped at B (Base 180) -> (-10, 0, 0)
+        objectPosition = vec3(-10.0, 0.0, 0.0);
+        // Rotate 180 deg to match arm
+        objectRotation = rotate(180, vec3(0, 1, 0));
+      } else {
+        // Cycle 2: Dropped at A (Base 90 - wait, Step 1 was 90? Or 0?)
+        // Initial position A was (10, 0, 0).
+        objectPosition = vec3(10.0, 0.0, 0.0);
+        objectRotation = mat4();
+      }
+    }
+  }
 }
 
 // ... (Rest of code) ...
@@ -160,8 +185,7 @@ function render() {
     handleAnimation();
   }
 
-  // Check picking every frame (Manual + Animation)
-  updatePickingState();
+  // Picking handled in handleAnimation (Static)
 
   var worldMatrix = mat4();
   worldMatrix = mult(worldMatrix, rotate(-30, vec3(1, 0, 0)));
@@ -364,7 +388,7 @@ function stopAnimation() {
 
 function resetArm() {
   stopAnimation();
-  theta = [0, 0, 0, 0, 40];
+  theta = [0, 0, 0, 0, 60];
 
   // Reset Object State
   isObjectPicked = false;
@@ -382,52 +406,6 @@ function resetArm() {
 function updateStatus(msg) {
   document.getElementById("status").innerText = "Status: " + msg;
 }
-
-// Animation Loop Logic
-function handleAnimation() {
-  var target = keyframes[animationStep];
-  var done = true;
-  var speed = 1.0;
-
-  // Interpolate each joint
-  for (var i = 0; i < 5; i++) {
-    var diff = target[i] - theta[i];
-    if (Math.abs(diff) > 0.5) {
-      theta[i] += diff * 0.05; // Smooth transition
-      done = false;
-    } else {
-      theta[i] = target[i];
-    }
-  }
-
-  // Update picked state moved to updatePickingState() called in render()
-
-  updateUI(); // Keep sliders in sync during animation
-
-  if (done) {
-    animationCounter++;
-    if (animationCounter > 20) { // Pause at keyframe
-      animationStep++;
-      animationCounter = 0;
-      if (animationStep >= keyframes.length) {
-        // Animation sequence complete. Switch direction.
-        animationStep = 0;
-        isReturnCycle = !isReturnCycle;
-
-        if (isReturnCycle) {
-          keyframes = keyframesBackward;
-          updateStatus("Returning (Cycle 2)...");
-        } else {
-          keyframes = keyframesForward;
-          updateStatus("Running Sequence (Cycle 1)...");
-        }
-      }
-    }
-  }
-}
-
-
-
 
 // Geometry Helpers
 function quad(a, b, c, d) {
@@ -532,70 +510,3 @@ function weightObject() {
   gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
 }
 
-function render() {
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-  if (isAnimating) {
-    handleAnimation();
-  }
-
-  // Check picking every frame (Manual + Animation)
-  updatePickingState();
-
-  var worldMatrix = mat4();
-  worldMatrix = mult(worldMatrix, rotate(-30, vec3(1, 0, 0)));
-  worldMatrix = mult(worldMatrix, rotate(45, vec3(0, 1, 0)));
-
-  modelViewMatrix = mult(worldMatrix, translate(0.0, -5.0, 0.0));
-  ground();
-  actualBase();
-
-  // Base
-  modelViewMatrix = mult(modelViewMatrix, rotate(theta[Base], vec3(0, 0.5, 0)));
-  base();
-
-  // Lower Arm
-  modelViewMatrix = mult(modelViewMatrix, translate(0.0, BASE_HEIGHT, 0.0));
-  modelViewMatrix = mult(modelViewMatrix, rotate(theta[LowerArm], vec3(1, 0, 0)));
-  lowerArm();
-
-  // Upper Arm
-  modelViewMatrix = mult(modelViewMatrix, translate(0.0, LOWER_ARM_HEIGHT, 0.0));
-  modelViewMatrix = mult(modelViewMatrix, rotate(theta[UpperArm], vec3(1, 0, 0)));
-  upperArm();
-
-  // Gripper
-  // Translate to end of Upper Arm
-  modelViewMatrix = mult(modelViewMatrix, translate(0.0, UPPER_ARM_HEIGHT, 0.0));
-
-  // Apply Gripper Base Rotation (Around Y-axis of arm)
-  modelViewMatrix = mult(modelViewMatrix, rotate(theta[GripperBase], vec3(1, 0, 0)));
-  gripperBase();
-
-  modelViewMatrix = mult(modelViewMatrix, translate(0.0, GRIPPER_BASE_HEIGHT, 0.0));
-  gripper();
-
-  // Weight Object
-  var gripperMatrix = modelViewMatrix;
-
-  if (isObjectPicked) {
-    modelViewMatrix = mult(modelViewMatrix, rotate(-90, vec3(1, 0, 0)));
-    // Removed the X offset (translate(0.5 * GRIPPER_BASE_WIDTH, ...)) to center object
-    weightObject();
-  } else {
-    modelViewMatrix = worldMatrix;
-    // Apply object position (Translate)
-    modelViewMatrix = mult(modelViewMatrix, translate(objectPosition[0], objectPosition[1] - 4.5, objectPosition[2]));
-    // Apply object rotation (Rotation)
-    // objectRotation should be a rotation matrix.
-    // Note: objectPosition is already relative to WorldMatrix(Scene). 
-    // And objectRotation is also calculated relative to World in picking.js
-    modelViewMatrix = mult(modelViewMatrix, objectRotation);
-
-    weightObject();
-  }
-
-  modelViewMatrix = gripperMatrix;
-
-  requestAnimationFrame(render);
-}
