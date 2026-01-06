@@ -1,16 +1,6 @@
 "use strict";
 
 // =========================================================================
-// PHYSICS CONSTANTS & STATE
-// =========================================================================
-
-var GRAVITY = 9.8;
-var GROUND_Y = 0.5; // (Half-height of cube)
-
-var velocity = vec3(0.0, 0.0, 0.0);
-var settlingState = null; // Stores { pivotIdx, faceIndex, faceSign } when landing
-
-// =========================================================================
 // PHYSICS ENGINE
 // =========================================================================
 
@@ -174,7 +164,7 @@ function updatePhysics(deltaTime) {
 function updatePickingState() {
   // Threshold for picking (distance)
   var threshold = 5.0;
-  var pickingThresholdAngle = 70;
+  var pickingThresholdAngle = 80;
   var gripperAngle = theta[Gripper];
 
   // Calculate Gripper Transform (FK) relative to Scene

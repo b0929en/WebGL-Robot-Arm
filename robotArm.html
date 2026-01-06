@@ -3,14 +3,14 @@
 
 <head>
   <meta charset="utf-8">
-  <title>WebGL Robot Arm</title>
+  <title>Robot Arm: 4 Guys</title>
   <link rel="stylesheet" href="robotArm.css">
 </head>
 
 <body>
 
   <div class="sidebar">
-    <h1>Robot Controller</h1>
+    <h1>Robot Arm Control Panel</h1>
 
     <div id="status">Status: Idle</div>
 
@@ -59,7 +59,9 @@
       Your browser does not support WebGL.
     </canvas>
     <div class="btn-group centered-controls">
-      <button id="playBtn">▶ Auto Pick & Place</button>
+      <button id="btnAtoB">▶ A ➡ B</button>
+      <button id="btnBtoA">▶ B ➡ A</button>
+      <button id="playBtn">↻ Animation Loop</button>
       <button id="stopBtn">⏹ Stop</button>
       <button id="resetBtn">⟲ Reset</button>
     </div>
@@ -106,12 +108,28 @@
     </script>
 
   <!-- WebGL Helper Libraries -->
-  <script src="initShaders.js"></script>
-  <script src="MV.js"></script>
+  <!-- Libraries -->
+  <script src="js/initShaders.js"></script>
+  <script src="js/MV.js"></script>
 
-  <!-- Robot Arm Logic -->
-  <script src="robotArm.js"></script>
-  <script src="physics.js"></script>
+  <!-- Core Config (Constants/Globals) -->
+  <script src="js/core/config.js"></script>
+
+  <!-- Data & Geometry -->
+  <script src="js/visual/colors.js"></script>
+  <script src="js/animation/keyframes.js"></script>
+  <script src="js/geometry/primitives.js"></script>
+  <script src="js/geometry/zones.js"></script>
+
+  <!-- Logic Modules -->
+  <script src="js/physics/physics.js"></script>
+  <script src="js/animation/animator.js"></script>
+  <script src="js/input/controls.js"></script>
+  <script src="js/input/ui.js"></script>
+
+  <!-- Renderer & Main -->
+  <script src="js/visual/renderer.js"></script>
+  <script src="js/core/main.js"></script>
 
 </body>
 
