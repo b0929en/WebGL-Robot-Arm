@@ -27,6 +27,8 @@ function setupSliders() {
 
 function setupButtons() {
   document.getElementById("playBtn").onclick = startAnimation;
+  document.getElementById("btnAtoB").onclick = startAtoB;
+  document.getElementById("btnBtoA").onclick = startBtoA;
   document.getElementById("stopBtn").onclick = stopAnimation;
   document.getElementById("resetBtn").onclick = resetArm;
 }

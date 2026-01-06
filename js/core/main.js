@@ -277,12 +277,12 @@ function render() {
   // Drop Zone A
   var savedMatrix = modelViewMatrix;
   modelViewMatrix = worldMatrix;
-  modelViewMatrix = mult(modelViewMatrix, translate(10.0, -5.0, 0.0));
+  modelViewMatrix = mult(modelViewMatrix, translate(10.4, -5.0, 0.0));
   drawDropZoneA();
 
   // Drop Zone B
   modelViewMatrix = worldMatrix;
-  modelViewMatrix = mult(modelViewMatrix, translate(-10.0, -5.0, 0.0));
+  modelViewMatrix = mult(modelViewMatrix, translate(-10.4, -5.0, 0.0));
   drawDropZoneB();
 
   modelViewMatrix = savedMatrix;

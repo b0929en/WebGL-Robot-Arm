@@ -73,6 +73,18 @@ button#playBtn:hover {
   background-color: #218838;
 }
 
+button#btnAtoB,
+button#btnBtoA {
+  background-color: #1c6fae;
+  color: white;
+  grid-column: span 2;
+}
+
+button#btnAtoB:hover,
+button#btnBtoA:hover {
+  background-color: #1849a3;
+}
+
 button#stopBtn {
   background-color: #dc3545;
   color: white;

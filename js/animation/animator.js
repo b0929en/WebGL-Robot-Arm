@@ -4,15 +4,43 @@
 // ANIMATION LOGIC
 // =========================================================================
 
+var isLooping = false;
+
 function startAnimation() {
   if (isAnimating) return;
   isAnimating = true;
+  isLooping = true;
   animationStep = 0;
-  updateStatus("Running Sequence...");
+  // Reset to beginning if unspecified, or just continue?
+  // Usually clean start:
+  isReturnCycle = false;
+  keyframes = keyframesForward;
+  updateStatus("Looping Animation...");
+}
+
+function startAtoB() {
+  if (isAnimating) return;
+  isAnimating = true;
+  isLooping = false;
+  animationStep = 0;
+  isReturnCycle = false;
+  keyframes = keyframesForward;
+  updateStatus("Moving object from A to B...");
+}
+
+function startBtoA() {
+  if (isAnimating) return;
+  isAnimating = true;
+  isLooping = false;
+  animationStep = 0;
+  isReturnCycle = true;
+  keyframes = keyframesBackward;
+  updateStatus("Moving object from B to A...");
 }
 
 function stopAnimation() {
   isAnimating = false;
+  isLooping = false;
   updateStatus("Stopped");
 }
 
@@ -53,10 +81,14 @@ function handleAnimation() {
       animationStep++;
       animationCounter = 0;
       if (animationStep >= keyframes.length) {
-        animationStep = 0;
-        isReturnCycle = !isReturnCycle;
-        keyframes = isReturnCycle ? keyframesBackward : keyframesForward;
-        updateStatus(isReturnCycle ? "Returning (Cycle 2)..." : "Running Sequence (Cycle 1)...");
+        if (isLooping) {
+          animationStep = 0;
+          isReturnCycle = !isReturnCycle;
+          keyframes = isReturnCycle ? keyframesBackward : keyframesForward;
+        } else {
+          stopAnimation();
+          updateStatus("Sequence Complete");
+        }
       }
     }
   }
