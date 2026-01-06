@@ -42,7 +42,7 @@ function setupKeyboard() {
 
     // Toggle Gripper immediately on press (not continuous)
     if (key === 'x') {
-      theta[Gripper] = (theta[Gripper] > 70) ? 60 : 80;
+      theta[Gripper] = (theta[Gripper] > 80) ? 70 : 90;
       updateUI();
     }
   });

@@ -164,7 +164,7 @@ function updatePhysics(deltaTime) {
 function updatePickingState() {
   // Threshold for picking (distance)
   var threshold = 5.0;
-  var pickingThresholdAngle = 70;
+  var pickingThresholdAngle = 80;
   var gripperAngle = theta[Gripper];
 
   // Calculate Gripper Transform (FK) relative to Scene

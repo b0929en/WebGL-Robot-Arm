@@ -11,7 +11,7 @@ function setupSliders() {
       theta[index] = Number(e.target.value);
       var valId = "val" + (index + 1);
       if (isGripper) {
-        document.getElementById(valId).innerText = theta[index] < 70 ? "Closed" : "Open";
+        document.getElementById(valId).innerText = theta[index] < 80 ? "Closed" : "Open";
       } else {
         document.getElementById(valId).innerText = Math.round(theta[index]) + "°";
       }
@@ -42,7 +42,7 @@ function updateUI() {
   document.getElementById("val2").innerText = Math.round(theta[LowerArm]) + "°";
   document.getElementById("val3").innerText = Math.round(theta[UpperArm]) + "°";
   document.getElementById("val4").innerText = Math.round(theta[GripperBase]) + "°";
-  document.getElementById("val5").innerText = theta[Gripper] < 70 ? "Closed" : "Open";
+  document.getElementById("val5").innerText = theta[Gripper] < 80 ? "Closed" : "Open";
 }
 
 function updateStatus(msg) {
