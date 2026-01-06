@@ -63,14 +63,15 @@ var GROUND_HEIGHT = 0.5;
 
 // Physics Constants
 var GRAVITY = 9.8;
-var GROUND_Y = 0.4; // Slightly above 0 to prevent visual clipping
+var GROUND_Y = 0.5; // Half-height of cube (0.5), so center sits at 0.5 when on ground
 
 // Physics State
 var velocity = vec3(0.0, 0.0, 0.0);
 var lastTime = 0;
+var settlingState = null; // Stores { pivotIdx, faceIndex, faceSign } when landing
 
 // Initial angles: Base, Lower, Upper, Gripper Base, Gripper
-var theta = [0, 0, 0, 0, 40];
+var theta = [0, 0, 0, 0, 60];
 
 var modelViewMatrixLoc;
 
@@ -264,7 +265,7 @@ function stopAnimation() {
 
 function resetArm() {
   stopAnimation();
-  theta = [0, 0, 0, 0, 40];
+  theta = [0, 0, 0, 0, 60];
 
   // Reset Object State
   isObjectPicked = false;
@@ -432,37 +433,225 @@ function weightObject() {
   gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
 }
 
+// Helper to transform a local vertex to world space
+function getCornerPos(localPos, center, rotMat) {
+  // Manual mat4 * vec3 (since MV.js mult is usually mat*mat)
+  // rotMat is column-major? MV.js usually handles it.
+  // Assuming standard (row, col) access if 2D array, or flat?
+  // MV.js mat4 is Row-Major 4x4 array.
+
+  var x = localPos[0];
+  var y = localPos[1];
+  var z = localPos[2];
+
+  // Rotate
+  var rx = rotMat[0][0] * x + rotMat[0][1] * y + rotMat[0][2] * z;
+  var ry = rotMat[1][0] * x + rotMat[1][1] * y + rotMat[1][2] * z;
+  var rz = rotMat[2][0] * x + rotMat[2][1] * y + rotMat[2][2] * z;
+
+  // Translate
+  return vec3(center[0] + rx, center[1] + ry, center[2] + rz);
+}
+
+// Rigid Body Physics Loop
 function updatePhysics(deltaTime) {
   if (isObjectPicked) {
-    velocity = vec3(0, 0, 0); // Reset velocity while holding
-  } else {
-    // Apply Gravity
-    velocity[1] -= GRAVITY * deltaTime;
+    velocity = vec3(0, 0, 0);
+    settlingState = null; // Reset landing logic on pickup
+    return;
+  }
 
-    // Apply Velocity to Position
+  if (settlingState !== null) {
+    velocity = vec3(0, 0, 0);
+  } else {
+    // 1. apply gravity
+    velocity[1] -= GRAVITY * deltaTime;
+  }
+
+  // 2. Predict step
+  var predY = objectPosition[1] + velocity[1] * deltaTime;
+
+  // Cube geometry
+  var h = 0.4;
+  var localCorners = [
+    vec3(h, h, h), vec3(-h, h, h), vec3(h, -h, h), vec3(-h, -h, h),
+    vec3(h, h, -h), vec3(-h, h, -h), vec3(h, -h, -h), vec3(-h, -h, -h)
+  ];
+
+  // 3. Check for ground contact
+  var curMinY = 1000;
+  var curMinIdx = -1;
+  var worldCorners = [];
+
+  // We check the geometry at the *predicted* position to catch collision early
+  var predPos = vec3(objectPosition[0] + velocity[0] * deltaTime, predY, objectPosition[2] + velocity[2] * deltaTime);
+
+  for (var i = 0; i < 8; i++) {
+    var wc = getCornerPos(localCorners[i], predPos, objectRotation);
+    if (wc[1] < curMinY) {
+      curMinY = wc[1];
+      curMinIdx = i;
+    }
+  }
+
+  var groundLevel = 0.0; // Revert to 0.0 for exact geometry
+
+  if (curMinY <= groundLevel || settlingState !== null) {
+    // --- COLLISION / SETTLING ---
+    velocity = vec3(0, 0, 0);
+
+    // Initialize Lock if new landing
+    if (settlingState === null) {
+      // 1. Identify Pivot (Lowest Corner)
+      var bestPivotIdx = curMinIdx;
+      var pivot = getCornerPos(localCorners[bestPivotIdx], objectPosition, objectRotation);
+
+      // 2. Identify Target Face
+      // A. Stability Pre-Check: Is a face already aligned with Up?
+      var worldUp = vec3(0, 1, 0);
+      var right = vec3(objectRotation[0][0], objectRotation[1][0], objectRotation[2][0]);
+      var up = vec3(objectRotation[0][1], objectRotation[1][1], objectRotation[2][1]);
+      var fwd = vec3(objectRotation[0][2], objectRotation[1][2], objectRotation[2][2]);
+
+      var candidates = [
+        { vec: up, index: 1, sign: 1 },
+        { vec: negate(up), index: 1, sign: -1 },
+        { vec: right, index: 0, sign: 1 },
+        { vec: negate(right), index: 0, sign: -1 },
+        { vec: fwd, index: 2, sign: 1 },
+        { vec: negate(fwd), index: 2, sign: -1 }
+      ];
+
+      var stabilityDot = -2.0;
+      var stableFace = candidates[0];
+
+      for (var i = 0; i < candidates.length; i++) {
+        var d = dot(candidates[i].vec, worldUp);
+        if (d > stabilityDot) { stabilityDot = d; stableFace = candidates[i]; }
+      }
+
+      var targetIndex, targetSign;
+
+      if (stabilityDot > 0.99) {
+        // CASE A: Already limits-stable (Flat)
+        // Don't use Gravity Vector (it destabilizes corner pivots).
+        // Just keep this face.
+        targetIndex = stableFace.index;
+        targetSign = stableFace.sign;
+      } else {
+        // CASE B: Tipping needed
+        // Use Gravity Vector (Center - Pivot) logic
+        var comVector = subtract(objectPosition, pivot);
+        if (length(comVector) < 0.001) comVector = vec3(0, 1, 0);
+        comVector = normalize(comVector);
+
+        var maxDot = -2.0;
+        var fallFace = candidates[0];
+
+        for (var i = 0; i < candidates.length; i++) {
+          var d = dot(candidates[i].vec, comVector);
+          if (d > maxDot) {
+            maxDot = d;
+            fallFace = candidates[i];
+          }
+        }
+
+        // Target UpCandidate is the OPPOSITE of fallFace
+        targetIndex = fallFace.index;
+        targetSign = -fallFace.sign;
+      }
+
+      settlingState = {
+        pivotIdx: bestPivotIdx,
+        faceIndex: targetIndex,
+        faceSign: targetSign
+      };
+    }
+
+    // --- EXECUTE SETTLING using LOCKED State ---
+
+    // 1. Get Pivot in World Space
+    var pivot = getCornerPos(localCorners[settlingState.pivotIdx], objectPosition, objectRotation);
+
+    // 2. Anchor Pivot to Ground (Vertical constraint)
+    var lift = groundLevel - pivot[1];
+    objectPosition[1] += lift;
+    pivot[1] += lift;
+
+    // 3. Rotate towards Target Face
+    var worldUp = vec3(0, 1, 0);
+
+    // Re-extract the specific Target Axis from current rotation
+    // Axis column
+    var colIdx = settlingState.faceIndex;
+    var colVec = vec3(objectRotation[0][colIdx], objectRotation[1][colIdx], objectRotation[2][colIdx]);
+
+    // Apply sign
+    if (settlingState.faceSign < 0) colVec = negate(colVec);
+
+    var currentAxis = colVec; // This is the face normal we want to contain 'Up'
+
+    var d = dot(currentAxis, worldUp);
+
+    if (d > 0.995) {
+      // --- FINAL SETTLE ---
+      // 1. Snap axis perfectly upright
+      var targetAxis = worldUp;
+      // currentAxis is already normalized by extraction logic usually, but safe to:
+      currentAxis = normalize(currentAxis);
+
+      var snapAxis = cross(currentAxis, targetAxis);
+      var snapDot = dot(currentAxis, targetAxis);
+
+      if (length(snapAxis) > 0.0001) {
+        snapAxis = normalize(snapAxis);
+        var snapAngle = Math.acos(Math.min(1, snapDot)) * 180 / Math.PI;
+        var R_snap = rotate(snapAngle, snapAxis);
+        objectRotation = mult(R_snap, objectRotation);
+      }
+
+      // 2. FORCE correct center height
+      objectPosition[1] = h; // h = 0.4
+
+      // 3. EXIT settling
+      settlingState = null;
+      return;
+
+    } else {
+      // Animation
+      var rotAxis = cross(currentAxis, worldUp);
+      var angleDiff = Math.acos(Math.max(-1, Math.min(1, d))) * (180 / Math.PI);
+
+      if (length(rotAxis) > 0.001) {
+        rotAxis = normalize(rotAxis);
+        var speed = 150 * deltaTime;
+        var step = Math.min(speed, angleDiff);
+
+        var R_step = rotate(step, rotAxis);
+        objectRotation = mult(R_step, objectRotation);
+
+        // Compensate Pivot
+        var p_to_c = subtract(objectPosition, pivot);
+
+        var rx = R_step[0][0] * p_to_c[0] + R_step[0][1] * p_to_c[1] + R_step[0][2] * p_to_c[2];
+        var ry = R_step[1][0] * p_to_c[0] + R_step[1][1] * p_to_c[1] + R_step[1][2] * p_to_c[2];
+        var rz = R_step[2][0] * p_to_c[0] + R_step[2][1] * p_to_c[1] + R_step[2][2] * p_to_c[2];
+
+        objectPosition = vec3(pivot[0] + rx, pivot[1] + ry, pivot[2] + rz);
+      }
+    }
+
+  } else {
+    // Falling
     objectPosition[0] += velocity[0] * deltaTime;
     objectPosition[1] += velocity[1] * deltaTime;
     objectPosition[2] += velocity[2] * deltaTime;
-
-    // Ground Collision Detection
-    // Ground level defined at objectPosition.y = GROUND_Y
-    if (objectPosition[1] <= GROUND_Y) {
-      objectPosition[1] = GROUND_Y;
-
-      // Simple Bounce / Stop
-      if (Math.abs(velocity[1]) > 0.5) {
-        velocity[1] *= -0.3; // Bounce damping
-      } else {
-        velocity[1] = 0;
-      }
-
-      // Friction (simple stop)
-      velocity[0] *= 0.9;
-      velocity[2] *= 0.9;
-    }
+    // If we are in air, ensure state is reset? 
+    // User said "closest face... decided when it reaches ground".
+    // If bounce happens (which we disabled), we might reset.
+    // But we just zero velocity, so it stays on ground.
   }
 }
-
 function render() {
   // Calculate Delta Time
   var now = Date.now();
