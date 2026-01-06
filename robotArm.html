@@ -21,30 +21,35 @@
 
     <div class="control-group">
       <label for="slider2">Lower Arm <span id="val2">0°</span></label>
-      <input id="slider2" type="range" min="-60" max="60" step="5" value="0">
+      <input id="slider2" type="range" min="-60" max="60" step="5" value="30">
     </div>
 
     <div class="control-group">
       <label for="slider3">Upper Arm <span id="val3">0°</span></label>
-      <input id="slider3" type="range" min="-120" max="120" step="5" value="0">
+      <input id="slider3" type="range" min="-120" max="120" step="5" value="-60">
     </div>
 
     <!-- Gripper Base Control -->
     <div class="control-group">
       <label for="slider4">Gripper Base <span id="val4">0°</span></label>
-      <input id="slider4" type="range" min="-60" max="60" step="5" value="0">
+      <input id="slider4" type="range" min="-60" max="60" step="5" value="-60">
     </div>
 
     <!-- Gripper Control -->
     <div class="control-group">
       <label for="slider5">Gripper <span id="val5">Open</span></label>
-      <input id="slider5" type="range" min="0" max="60" step="1" value="60">
+      <input id="slider5" type="range" min="60" max="80" step="20" value="80">
     </div>
 
-    <div class="btn-group">
-      <button id="playBtn">▶ Auto Pick & Place</button>
-      <button id="stopBtn">⏹ Stop</button>
-      <button id="resetBtn">⟲ Reset</button>
+
+
+    <div id="key-guide">
+      <h4>Key Guide</h4>
+      <div class="key-item"><span>Base Rotation</span> <span class="key-badge">A / D</span></div>
+      <div class="key-item"><span>Lower Arm</span> <span class="key-badge">W / S</span></div>
+      <div class="key-item"><span>Upper Arm</span> <span class="key-badge">Q / E</span></div>
+      <div class="key-item"><span>Gripper Base</span> <span class="key-badge">Z / C</span></div>
+      <div class="key-item"><span>Gripper Toggle</span> <span class="key-badge">X</span></div>
     </div>
 
   </div>
@@ -53,7 +58,14 @@
     <canvas id="gl-canvas" width="800" height="600">
       Your browser does not support WebGL.
     </canvas>
+    <div class="btn-group centered-controls">
+      <button id="playBtn">▶ Auto Pick & Place</button>
+      <button id="stopBtn">⏹ Stop</button>
+      <button id="resetBtn">⟲ Reset</button>
+    </div>
   </div>
+
+
 
   <!-- Vertex Shader -->
   <script id="vertex-shader" type="x-shader/x-vertex">
@@ -81,8 +93,15 @@
     in vec4 vColor;
     out vec4 fColor;
 
+    uniform bool uUseSolidColor;
+    uniform vec4 uSolidColor;
+
     void main() {
-        fColor = vColor;
+        if (uUseSolidColor) {
+            fColor = uSolidColor;
+        } else {
+            fColor = vColor;
+        }
     }
     </script>
 
@@ -91,8 +110,8 @@
   <script src="MV.js"></script>
 
   <!-- Robot Arm Logic -->
-  <script src="picking.js"></script>
   <script src="robotArm.js"></script>
+  <script src="physics.js"></script>
 
 </body>
 

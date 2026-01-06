@@ -1,12 +1,121 @@
 "use strict";
 
+// =========================================================================
+// GLOBAL VARIABLES & CONSTANTS
+// =========================================================================
+
 var canvas, gl, program;
 
-var NumVertices = 36; //(6 faces)(2 triangles/face)(3 vertices/triangle)
+// --- Geometry Parameters ---
+var NumVertices = 36;
 
+var ACTUAL_BASE_HEIGHT = 1.0;
+var ACTUAL_BASE_WIDTH = 5.0;
+var BASE_HEIGHT = 1.5;
+var BASE_WIDTH = 3.0;
+var JOINT_LENGTH = 0.8;
+var JOINT_HEIGHT = 1.2;
+var JOINT_WIDTH = 1.2;
+var LOWER_ARM_HEIGHT = 8.0;
+var LOWER_ARM_WIDTH = 0.5;
+var UPPER_ARM_HEIGHT = 8.0;
+var UPPER_ARM_WIDTH = 0.5;
+var GRIPPER_BASE_LENGTH = 1.4;
+var GRIPPER_BASE_HEIGHT = 0.5;
+var GRIPPER_BASE_WIDTH = 0.8;
+var GRIPPER_HEIGHT = 1.0;
+var GRIPPER_WIDTH = 0.2;
+var GRIPPER_LENGTH = 0.8;
+
+var GROUND_WIDTH = 30.0;
+var GROUND_HEIGHT = 0.5;
+
+// --- Application State ---
+// Joints: Base, Lower, Upper, Gripper Base, Gripper
+var theta = [0, 30, -60, -60, 80];
+
+// Weight Object State
+var isObjectPicked = false;
+var objectPosition = vec3(10.0, 0.0, 0.0);
+var objectRotation = mat4();
+var lastTime = 0;
+
+// Animation State
+var isAnimating = false;
+var animationStep = 0;
+var animationCounter = 0;
+var isReturnCycle = false;
+
+// Camera State
+var cameraAzimuth = 45;
+var cameraElevation = 30;
+var zoomLevel = 20.0; // Initial Zoom
+var isDragging = false;
+var lastMouseX = 0;
+var lastMouseY = 0;
+
+var keyframesForward = [
+  [0, 30, -60, -60, 80],   // 0: Home
+  [-90, 30, -60, -60, 80],  // 1: Align with object A
+  [-90, -40, -110, 60, 80],  // 2: Reach Down A
+  [-90, -40, -110, 60, 60],  // 3: Grasp A (Close)
+  [-90, -10, -120, 40, 60],  // 4: Lift A
+  [90, -10, -120, 40, 60], // 5: Move to Drop Zone B
+  [90, -40, -110, 60, 60], // 6: Lower B
+  [90, -40, -110, 60, 80], // 7: Release B (Open)
+  [90, 30, -60, -60, 80]   // 8: Return Home
+];
+
+var keyframesBackward = [
+  [90, 30, -60, -60, 80],        // 0: Home
+  [90, -40, -110, 60, 80], // 1: Reach Down B
+  [90, -40, -110, 60, 60], // 2: Grasp B (Close)
+  [90, -10, -120, 40, 60], // 3: Lift B
+  [-90, -10, -120, 40, 60],  // 4: Move to Drop Zone A
+  [-90, -40, -110, 60, 60],  // 5: Lower A
+  [-90, -40, -110, 60, 80],  // 6: Release A (Open)
+  [-90, -10, -120, 40, 80],  // 7: Lift Empty A
+  [0, 30, -60, -60, 80]         // 8: Return Home
+];
+var keyframes = keyframesForward;
+
+// --- WebGL Globals ---
+var modelViewMatrix, projectionMatrix;
+var modelViewMatrixLoc;
+var uUseSolidColorLoc, uSolidColorLoc;
+var vColor, vPosition;
 var points = [];
 var colors = [];
 
+// Buffers
+var vBufferRobot, cBufferRobot;
+var vBufferGround, cBufferGround;
+var vBufferObject, cBufferObject;
+var vBufferZone, cBufferZone;
+var vBufferJoint, cBufferJoint;
+
+// Vertex Counts
+var numRobotVertices = 0;
+var numGroundVertices = 0;
+var numObjectVertices = 0;
+var numZoneVertices = 0;
+var numZoneAVertices = 0;
+var numJointVertices = 0;
+
+// --- Colors & Palettes ---
+
+// Ground palette (uniform)
+// --- Colors ---
+var COLOR_ZONE = vec4(1.0, 1.0, 1.0, 1.0);
+
+// Joint Indices
+var Base = 0;
+var LowerArm = 1;
+var UpperArm = 2;
+var GripperBase = 3;
+var Gripper = 4;
+
+// --- Vertex Data ---
 var vertices = [
   vec4(-0.5, -0.5, 0.5, 1.0),
   vec4(-0.5, 0.5, 0.5, 1.0),
@@ -18,107 +127,54 @@ var vertices = [
   vec4(0.5, -0.5, -0.5, 1.0)
 ];
 
-// RGBA colors
-var vertexColors = [
-  vec4(0.0, 0.0, 0.0, 1.0),  // black
-  vec4(1.0, 0.0, 0.0, 1.0),  // red
-  vec4(1.0, 1.0, 0.0, 1.0),  // yellow
-  vec4(0.0, 1.0, 0.0, 1.0),  // green
-  vec4(0.0, 0.0, 1.0, 1.0),  // blue
-  vec4(1.0, 0.0, 1.0, 1.0),  // magenta
-  vec4(1.0, 1.0, 1.0, 1.0),  // white
-  vec4(0.0, 1.0, 1.0, 1.0)   // cyan
+var robotVertexColors = [
+  vec4(0.0, 0.0, 0.0, 1.0),
+  vec4(0.6, 0.6, 0.6, 1.0),
+  vec4(0.8, 0.8, 0.8, 1.0),
+  vec4(0.4, 0.4, 0.4, 1.0),
+  vec4(0.6, 0.6, 0.6, 1.0),
+  vec4(0.8, 0.8, 0.8, 1.0),
+  vec4(0.9, 0.9, 0.9, 1.0),
+  vec4(0.0, 1.0, 1.0, 1.0)
 ];
 
-// Parameters controlling the size of the Robot's arm
-var BASE_HEIGHT = 1.0;
-var BASE_WIDTH = 5.0;
-var LOWER_ARM_HEIGHT = 8.0;
-var LOWER_ARM_WIDTH = 0.5;
-var UPPER_ARM_HEIGHT = 8.0;
-var UPPER_ARM_WIDTH = 0.5;
-var GRIPPER_BASE_HEIGHT = 0.5;
-var GRIPPER_BASE_WIDTH = 1.0;
-var GRIPPER_HEIGHT = 1.0;
-var GRIPPER_WIDTH = 0.2;
-
-// Shader transformation matrices
-var modelViewMatrix, projectionMatrix;
-
-// Array of rotation angles (in degrees) for each rotation axis
-var Base = 0;
-var LowerArm = 1;
-var UpperArm = 2;
-var GripperBase = 3;
-var Gripper = 4;
-
-// Weight Object 
-var isObjectPicked = false;
-var objectPosition = vec3(10.0, 0.0, 0.0);
-var objectRotation = mat4(); // Identity matrix for rotation
-
-// Ground
-var GROUND_WIDTH = 40.0;
-var GROUND_HEIGHT = 0.5;
-
-// Physics Constants
-var GRAVITY = 9.8;
-var GROUND_Y = 0.5; // Half-height of cube (0.5), so center sits at 0.5 when on ground
-
-// Physics State
-var velocity = vec3(0.0, 0.0, 0.0);
-var lastTime = 0;
-var settlingState = null; // Stores { pivotIdx, faceIndex, faceSign } when landing
-
-// Initial angles: Base, Lower, Upper, Gripper Base, Gripper
-var theta = [0, 0, 0, 0, 60];
-
-var modelViewMatrixLoc;
-
-var vBuffer, cBuffer;
-
-// Animation State
-var isAnimating = false;
-var animationStep = 0;
-var animationCounter = 0;
-
-// Keyframes for the animation sequence
-// Format: [Base, Lower, Upper, Gripper Base, Gripper]
-// Forward: Pick A -> Drop B
-var keyframesForward = [
-  [0, 0, 0, 0, 60],        // 0: Home
-  [90, 0, 0, 0, 60],       // 1: Align with object A
-  [90, 35, 115, -60, 60],  // 2: Reach Down A
-  [90, 35, 115, -60, 40],  // 3: Grasp A (Close)
-  [90, 10, 120, -40, 40],  // 4: Lift A
-  [180, 10, 120, -40, 40], // 5: Move to Drop Zone B
-  [180, 35, 115, -60, 40], // 6: Lower B
-  [180, 35, 115, -60, 60], // 7: Release B (Open)
-  [180, 10, 120, -40, 60], // 8: Lift Empty B
-  [0, 0, 0, 0, 60]         // 9: Return Home
+var objectVertexColors = [
+  vec4(0.9, 0.7, 0.2, 1.0),
+  vec4(0.9, 0.7, 0.2, 0.8), // bottom
+  vec4(0.9, 0.7, 0.2, 1.0), // side
+  vec4(0.9, 0.7, 0.2, 0.9), // side
+  vec4(0.9, 0.7, 0.2, 0.8), // top
+  vec4(0.9, 0.7, 0.2, 1.0), // side
+  vec4(0.9, 0.7, 0.2, 0.9), // side
+  vec4(0.9, 0.7, 0.2, 1.0)
 ];
 
-// Backward: Pick B -> Drop A
-var keyframesBackward = [
-  [0, 0, 0, 0, 60],        // 0: Home
-  [180, 0, 0, 0, 60],      // 1: Align with object B
-  [180, 35, 115, -60, 60], // 2: Reach Down B
-  [180, 35, 115, -60, 40], // 3: Grasp B (Close)
-  [180, 10, 120, -40, 40], // 4: Lift B
-  [90, 10, 120, -40, 40],  // 5: Move to Drop Zone A
-  [90, 35, 115, -60, 40],  // 6: Lower A
-  [90, 35, 115, -60, 60],  // 7: Release A (Open)
-  [90, 10, 120, -40, 60],  // 8: Lift Empty A
-  [0, 0, 0, 0, 60]         // 9: Return Home
+var jointVertexColors = [
+  vec4(0.3, 0.3, 0.3, 1.0),
+  vec4(0.3, 0.3, 0.3, 1.0), // side
+  vec4(0.3, 0.3, 0.3, 0.9), // side
+  vec4(0.3, 0.3, 0.3, 0.8), // bottom
+  vec4(0.3, 0.3, 0.3, 1.0), // side
+  vec4(0.3, 0.3, 0.3, 0.9), // side
+  vec4(0.3, 0.3, 0.3, 0.85), // top
+  vec4(0.9, 0.7, 0.1, 1.0)
 ];
 
-var keyframes = keyframesForward;
-var isReturnCycle = false;
+var groundVertexColors = [
+  vec4(0.5, 0.3, 0.3, 1.0),
+  vec4(0.6, 0.4, 0.4, 1.0),
+  vec4(0.7, 0.5, 0.5, 1.0),
+  vec4(0.4, 0.2, 0.2, 1.0),
+  vec4(0.6, 0.4, 0.4, 1.0),
+  vec4(0.7, 0.5, 0.5, 1.0),
+  vec4(0.5, 0.3, 0.3, 1.0),
+  vec4(0.5, 0.3, 0.3, 1.0)
+];
 
+// =========================================================================
+// INITIALIZATION
+// =========================================================================
 
-
-
-// Initialize the application
 window.onload = function init() {
   lastTime = Date.now();
   canvas = document.getElementById("gl-canvas");
@@ -126,99 +182,166 @@ window.onload = function init() {
   if (!gl) alert("WebGL 2.0 isn't available");
 
   gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.clearColor(0.95, 0.95, 0.95, 1.0); // Slightly lighter bg
+  gl.clearColor(0.95, 0.95, 0.95, 1.0);
   gl.enable(gl.DEPTH_TEST);
 
   program = initShaders(gl, "vertex-shader", "fragment-shader");
   gl.useProgram(program);
 
-  colorCube();
+  // Initialize Attributes
+  vPosition = gl.getAttribLocation(program, "aPosition");
+  gl.enableVertexAttribArray(vPosition);
+  vColor = gl.getAttribLocation(program, "aColor");
+  gl.enableVertexAttribArray(vColor);
 
-  // Position buffer
-  vBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, flatten(points), gl.STATIC_DRAW);
+  points = []; colors = [];
+  robotCube();
+  var robotPoints = points.slice();
+  var robotColors = colors.slice();
+  numRobotVertices = robotPoints.length;
 
-  var positionLoc = gl.getAttribLocation(program, "aPosition");
-  gl.vertexAttribPointer(positionLoc, 4, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(positionLoc);
+  points = []; colors = [];
+  groundCube();
+  var groundPoints = points.slice();
+  var groundColors = colors.slice();
+  numGroundVertices = groundPoints.length;
 
-  // Color buffer
-  cBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW);
+  points = []; colors = [];
+  objectCube();
+  var objectPoints = points.slice();
+  var objectColors = colors.slice();
+  numObjectVertices = objectPoints.length;
 
-  var colorLoc = gl.getAttribLocation(program, "aColor");
-  gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(colorLoc);
+  // 4. Drop Zone (Lines)
+  var zonePoints = generateDropZoneGeometry();
+  var zoneColors = [];
+  for (var i = 0; i < zonePoints.length; i++) zoneColors.push(COLOR_ZONE);
+  numZoneVertices = zonePoints.length;
 
-  // Initialize Sliders
+  // --- Create Buffers ---
+
+  // Robot
+  vBufferRobot = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBufferRobot);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(robotPoints), gl.STATIC_DRAW);
+
+  cBufferRobot = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, cBufferRobot);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(robotColors), gl.STATIC_DRAW);
+
+  // Ground
+  vBufferGround = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBufferGround);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(groundPoints), gl.STATIC_DRAW);
+
+  cBufferGround = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, cBufferGround);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(groundColors), gl.STATIC_DRAW);
+
+  // Object
+  vBufferObject = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBufferObject);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(objectPoints), gl.STATIC_DRAW);
+
+  cBufferObject = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, cBufferObject);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(objectColors), gl.STATIC_DRAW);
+
+  // Joint Box
+  points = []; colors = [];
+  jointCube();
+  var jointPoints = points.slice();
+  var jointColors = colors.slice();
+  numJointVertices = jointPoints.length;
+
+  vBufferJoint = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBufferJoint);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(jointPoints), gl.STATIC_DRAW);
+
+  cBufferJoint = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, cBufferJoint);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(jointColors), gl.STATIC_DRAW);
+
+  // Buffer Zone
+  vBufferZone = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBufferZone);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(zonePoints), gl.STATIC_DRAW);
+
+  cBufferZone = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, cBufferZone);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(zoneColors), gl.STATIC_DRAW);
+
+  // Bind Robot Buffer (Default for generic components)
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBufferRobot);
+  gl.vertexAttribPointer(vPosition, 4, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, cBufferRobot);
+  gl.vertexAttribPointer(vColor, 4, gl.FLOAT, false, 0, 0);
+
+  // Initialize UI & Controls
   setupSliders();
+  setupKeyboard();
+  setupMouseControls();
+  setupButtons();
 
-  // Initialize Keyboard Controls
-  document.addEventListener('keydown', function (event) {
-    if (isAnimating) return; // Disable manual control during animation
-
-    switch (event.key.toLowerCase()) {
-      case 'a':
-      case 'arrowleft':
-        theta[Base] = Math.max(-180, theta[Base] - 5);
-        break;
-      case 'd':
-      case 'arrowright':
-        theta[Base] = Math.min(180, theta[Base] + 5);
-        break;
-      case 'w':
-      case 'arrowup':
-        theta[LowerArm] = Math.min(60, theta[LowerArm] + 5);
-        break;
-      case 's':
-      case 'arrowdown':
-        theta[LowerArm] = Math.max(-60, theta[LowerArm] - 5);
-        break;
-      case 'q':
-        theta[UpperArm] = Math.min(120, theta[UpperArm] + 5);
-        break;
-      case 'e':
-        theta[UpperArm] = Math.max(-120, theta[UpperArm] - 5);
-        break;
-      case 'z': // Close Gripper
-        theta[Gripper] = Math.max(0, theta[Gripper] - 5);
-        break;
-      case 'x': // Open Gripper
-        theta[Gripper] = Math.min(60, theta[Gripper] + 5);
-        break;
-    }
-    updateUI();
-  });
-
-  // Initialize Buttons
-  document.getElementById("playBtn").onclick = startAnimation;
-  document.getElementById("stopBtn").onclick = stopAnimation;
-  document.getElementById("resetBtn").onclick = resetArm;
-
+  // Shader Uniforms
   modelViewMatrixLoc = gl.getUniformLocation(program, "modelViewMatrix");
+  uUseSolidColorLoc = gl.getUniformLocation(program, "uUseSolidColor");
+  uSolidColorLoc = gl.getUniformLocation(program, "uSolidColor");
 
-  projectionMatrix = ortho(-20, 20, -20, 20, -20, 20);
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(program, "projectionMatrix"),
-    false,
-    flatten(projectionMatrix)
-  );
+  projectionMatrix = ortho(-10, 10, -10, 10, -10, 10);
+  gl.uniformMatrix4fv(gl.getUniformLocation(program, "projectionMatrix"), false, flatten(projectionMatrix));
 
+  resetArm();
   render();
+};
+
+
+// =========================================================================
+// UI & CONTROLS
+// =========================================================================
+
+function setupMouseControls() {
+  canvas.onmousedown = function (e) {
+    isDragging = true;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  };
+
+  document.onmouseup = function (e) {
+    isDragging = false;
+  };
+
+  document.onmousemove = function (e) {
+    if (!isDragging) return;
+    var dx = e.clientX - lastMouseX;
+    var dy = e.clientY - lastMouseY;
+
+    cameraAzimuth += dx * 0.5;
+    cameraElevation += dy * 0.5;
+
+    // Clamp elevation slightly to prevent confusing flips if desired
+    // cameraElevation = Math.max(-85, Math.min(85, cameraElevation));
+
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  };
+
+  canvas.onwheel = function (e) {
+    e.preventDefault();
+    var delta = Math.sign(e.deltaY);
+    zoomLevel += delta * 1.0;
+    zoomLevel = Math.max(5.0, Math.min(50.0, zoomLevel));
+  };
 }
 
 function setupSliders() {
-  // Defines a helper to attach listener and update visual
   function attach(id, index, isGripper) {
     var el = document.getElementById(id);
     el.oninput = function (e) {
       theta[index] = Number(e.target.value);
-      // Update display text
       var valId = "val" + (index + 1);
       if (isGripper) {
-        document.getElementById(valId).innerText = theta[index] < 5 ? "Closed" : Math.round(theta[index]);
+        document.getElementById(valId).innerText = theta[index] < 70 ? "Closed" : "Open";
       } else {
         document.getElementById(valId).innerText = Math.round(theta[index]) + "°";
       }
@@ -228,12 +351,37 @@ function setupSliders() {
   attach("slider1", Base, false);
   attach("slider2", LowerArm, false);
   attach("slider3", UpperArm, false);
-
-  // Slider 4: Gripper Base (Index 3) - Rotation
   attach("slider4", GripperBase, false);
-
-  // Slider 5: Gripper Fingers (Index 4) - Open/Close
   attach("slider5", Gripper, true);
+}
+
+function setupKeyboard() {
+  document.addEventListener('keydown', function (event) {
+    if (isAnimating) return;
+
+    switch (event.key.toLowerCase()) {
+      case 'a':
+      case 'arrowleft': theta[Base] = Math.max(-180, theta[Base] - 5); break;
+      case 'd':
+      case 'arrowright': theta[Base] = Math.min(180, theta[Base] + 5); break;
+      case 'w':
+      case 'arrowup': theta[LowerArm] = Math.min(60, theta[LowerArm] + 5); break;
+      case 's':
+      case 'arrowdown': theta[LowerArm] = Math.max(-60, theta[LowerArm] - 5); break;
+      case 'q': theta[UpperArm] = Math.min(120, theta[UpperArm] + 5); break;
+      case 'e': theta[UpperArm] = Math.max(-120, theta[UpperArm] - 5); break;
+      case 'z': theta[GripperBase] = Math.max(-60, theta[GripperBase] - 5); break;
+      case 'c': theta[GripperBase] = Math.min(60, theta[GripperBase] + 5); break;
+      case 'x': theta[Gripper] = (theta[Gripper] > 70) ? 60 : 80; break;
+    }
+    updateUI();
+  });
+}
+
+function setupButtons() {
+  document.getElementById("playBtn").onclick = startAnimation;
+  document.getElementById("stopBtn").onclick = stopAnimation;
+  document.getElementById("resetBtn").onclick = resetArm;
 }
 
 function updateUI() {
@@ -247,10 +395,18 @@ function updateUI() {
   document.getElementById("val2").innerText = Math.round(theta[LowerArm]) + "°";
   document.getElementById("val3").innerText = Math.round(theta[UpperArm]) + "°";
   document.getElementById("val4").innerText = Math.round(theta[GripperBase]) + "°";
-  document.getElementById("val5").innerText = theta[Gripper] < 5 ? "Closed" : Math.round(theta[Gripper]);
+  document.getElementById("val5").innerText = theta[Gripper] < 70 ? "Closed" : "Open";
 }
 
-// Animation Control Functions
+function updateStatus(msg) {
+  document.getElementById("status").innerText = "Status: " + msg;
+}
+
+
+// =========================================================================
+// ANIMATION LOGIC
+// =========================================================================
+
 function startAnimation() {
   if (isAnimating) return;
   isAnimating = true;
@@ -265,450 +421,117 @@ function stopAnimation() {
 
 function resetArm() {
   stopAnimation();
-  theta = [0, 0, 0, 0, 60];
-
-  // Reset Object State
+  theta = [0, 30, -60, -60, 80];
   isObjectPicked = false;
   objectPosition = vec3(10.0, 0.0, 0.0);
-  objectRotation = mat4();
-
-  // Reset Animation Cycle
+  objectRotation = mult(rotate(-90, vec3(0, 1, 0)), rotate(-90, vec3(1, 0, 0)));
   isReturnCycle = false;
   keyframes = keyframesForward;
+  settlingState = null;
+  velocity = vec3(0, 0, 0);
 
   updateUI();
   updateStatus("Reset");
 }
 
-function updateStatus(msg) {
-  document.getElementById("status").innerText = "Status: " + msg;
-}
-
-// Animation Loop Logic
 function handleAnimation() {
   var target = keyframes[animationStep];
   var done = true;
-  var speed = 1.0;
 
-  // Interpolate each joint
   for (var i = 0; i < 5; i++) {
     var diff = target[i] - theta[i];
     if (Math.abs(diff) > 0.5) {
-      theta[i] += diff * 0.05; // Smooth transition
+      theta[i] += diff * 0.05;
       done = false;
     } else {
       theta[i] = target[i];
     }
   }
 
-  // Update picked state moved to updatePickingState() called in render()
-
-  updateUI(); // Keep sliders in sync during animation
+  updateUI();
 
   if (done) {
     animationCounter++;
-    if (animationCounter > 20) { // Pause at keyframe
+    if (animationCounter > 20) {
       animationStep++;
       animationCounter = 0;
       if (animationStep >= keyframes.length) {
-        // Animation sequence complete. Switch direction.
         animationStep = 0;
         isReturnCycle = !isReturnCycle;
-
-        if (isReturnCycle) {
-          keyframes = keyframesBackward;
-          updateStatus("Returning (Cycle 2)...");
-        } else {
-          keyframes = keyframesForward;
-          updateStatus("Running Sequence (Cycle 1)...");
-        }
+        keyframes = isReturnCycle ? keyframesBackward : keyframesForward;
+        updateStatus(isReturnCycle ? "Returning (Cycle 2)..." : "Running Sequence (Cycle 1)...");
       }
     }
   }
 }
 
+// =========================================================================
+// RENDER LOOP
+// =========================================================================
 
-
-
-// Geometry Helpers
-function quad(a, b, c, d) {
-  colors.push(vertexColors[a]);
-  points.push(vertices[a]);
-  colors.push(vertexColors[a]);
-  points.push(vertices[b]);
-  colors.push(vertexColors[a]);
-  points.push(vertices[c]);
-  colors.push(vertexColors[a]);
-  points.push(vertices[a]);
-  colors.push(vertexColors[a]);
-  points.push(vertices[c]);
-  colors.push(vertexColors[a]);
-  points.push(vertices[d]);
-}
-
-function colorCube() {
-  quad(1, 0, 3, 2);
-  quad(2, 3, 7, 6);
-  quad(3, 0, 4, 7);
-  quad(6, 5, 1, 2);
-  quad(4, 5, 6, 7);
-  quad(5, 4, 0, 1);
-}
-
-// Drawing Functions
-function ground() {
-  var s = scale(GROUND_WIDTH, GROUND_HEIGHT, GROUND_WIDTH);
-  var instanceMatrix = mult(translate(0.0, -0.5 * GROUND_HEIGHT, 0.0), s);
-  var t = mult(modelViewMatrix, instanceMatrix);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-}
-
-function actualBase() {
-  var s = scale(BASE_WIDTH, BASE_HEIGHT, BASE_WIDTH);
-  var instanceMatrix = mult(translate(0.0, 0.5 * BASE_HEIGHT, 0.0), s);
-  var t = mult(modelViewMatrix, instanceMatrix);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-}
-
-function base() {
-  var s = scale(1.5, 1.5, 1.5);
-  var instanceMatrix = mult(translate(0.0, 0.5, 0.0), s);
-  var t = mult(modelViewMatrix, instanceMatrix);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-}
-
-function upperArm() {
-  var s = scale(UPPER_ARM_WIDTH, UPPER_ARM_HEIGHT, UPPER_ARM_WIDTH);
-  var instanceMatrix = mult(translate(0.0, 0.5 * UPPER_ARM_HEIGHT, 0.0), s);
-  var t = mult(modelViewMatrix, instanceMatrix);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-}
-
-function lowerArm() {
-  var s = scale(LOWER_ARM_WIDTH, LOWER_ARM_HEIGHT, LOWER_ARM_WIDTH);
-  var instanceMatrix = mult(translate(0.0, 0.5 * LOWER_ARM_HEIGHT, 0.0), s);
-  var t = mult(modelViewMatrix, instanceMatrix);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-}
-
-function gripperBase() {
-  var s = scale(GRIPPER_BASE_WIDTH, GRIPPER_BASE_HEIGHT, GRIPPER_BASE_WIDTH);
-  var instanceMatrix = mult(translate(0.0, 0.5 * GRIPPER_BASE_HEIGHT, 0.0), s);
-  var t = mult(modelViewMatrix, instanceMatrix);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-}
-
-function gripper() {
-  // Scale for gripper fingers
-  var s = scale(GRIPPER_WIDTH, GRIPPER_HEIGHT, GRIPPER_WIDTH);
-
-  // Distance between fingers is controlled by theta[Gripper]
-  // Map 0-60 range to 0.1-0.4 distance
-  var d = 0.15 + (theta[Gripper] / 200.0);
-
-  // Left Finger
-  var instanceMatrix1 = mult(translate(d, 0.5 * GRIPPER_HEIGHT, 0.0), s);
-  var t1 = mult(modelViewMatrix, instanceMatrix1);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t1));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-
-  // Right Finger
-  var instanceMatrix2 = mult(translate(-d, 0.5 * GRIPPER_HEIGHT, 0.0), s);
-  var t2 = mult(modelViewMatrix, instanceMatrix2);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t2));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-}
-
-function weightObject() {
-  var s = scale(0.8, 0.8, 0.8);
-  var instanceMatrix = s;
-  var t = mult(modelViewMatrix, instanceMatrix);
-  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(t));
-  gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
-}
-
-// Helper to transform a local vertex to world space
-function getCornerPos(localPos, center, rotMat) {
-  // Manual mat4 * vec3 (since MV.js mult is usually mat*mat)
-  // rotMat is column-major? MV.js usually handles it.
-  // Assuming standard (row, col) access if 2D array, or flat?
-  // MV.js mat4 is Row-Major 4x4 array.
-
-  var x = localPos[0];
-  var y = localPos[1];
-  var z = localPos[2];
-
-  // Rotate
-  var rx = rotMat[0][0] * x + rotMat[0][1] * y + rotMat[0][2] * z;
-  var ry = rotMat[1][0] * x + rotMat[1][1] * y + rotMat[1][2] * z;
-  var rz = rotMat[2][0] * x + rotMat[2][1] * y + rotMat[2][2] * z;
-
-  // Translate
-  return vec3(center[0] + rx, center[1] + ry, center[2] + rz);
-}
-
-// Rigid Body Physics Loop
-function updatePhysics(deltaTime) {
-  if (isObjectPicked) {
-    velocity = vec3(0, 0, 0);
-    settlingState = null; // Reset landing logic on pickup
-    return;
-  }
-
-  if (settlingState !== null) {
-    velocity = vec3(0, 0, 0);
-  } else {
-    // 1. apply gravity
-    velocity[1] -= GRAVITY * deltaTime;
-  }
-
-  // 2. Predict step
-  var predY = objectPosition[1] + velocity[1] * deltaTime;
-
-  // Cube geometry
-  var h = 0.4;
-  var localCorners = [
-    vec3(h, h, h), vec3(-h, h, h), vec3(h, -h, h), vec3(-h, -h, h),
-    vec3(h, h, -h), vec3(-h, h, -h), vec3(h, -h, -h), vec3(-h, -h, -h)
-  ];
-
-  // 3. Check for ground contact
-  var curMinY = 1000;
-  var curMinIdx = -1;
-  var worldCorners = [];
-
-  // We check the geometry at the *predicted* position to catch collision early
-  var predPos = vec3(objectPosition[0] + velocity[0] * deltaTime, predY, objectPosition[2] + velocity[2] * deltaTime);
-
-  for (var i = 0; i < 8; i++) {
-    var wc = getCornerPos(localCorners[i], predPos, objectRotation);
-    if (wc[1] < curMinY) {
-      curMinY = wc[1];
-      curMinIdx = i;
-    }
-  }
-
-  var groundLevel = 0.0; // Revert to 0.0 for exact geometry
-
-  if (curMinY <= groundLevel || settlingState !== null) {
-    // --- COLLISION / SETTLING ---
-    velocity = vec3(0, 0, 0);
-
-    // Initialize Lock if new landing
-    if (settlingState === null) {
-      // 1. Identify Pivot (Lowest Corner)
-      var bestPivotIdx = curMinIdx;
-      var pivot = getCornerPos(localCorners[bestPivotIdx], objectPosition, objectRotation);
-
-      // 2. Identify Target Face
-      // A. Stability Pre-Check: Is a face already aligned with Up?
-      var worldUp = vec3(0, 1, 0);
-      var right = vec3(objectRotation[0][0], objectRotation[1][0], objectRotation[2][0]);
-      var up = vec3(objectRotation[0][1], objectRotation[1][1], objectRotation[2][1]);
-      var fwd = vec3(objectRotation[0][2], objectRotation[1][2], objectRotation[2][2]);
-
-      var candidates = [
-        { vec: up, index: 1, sign: 1 },
-        { vec: negate(up), index: 1, sign: -1 },
-        { vec: right, index: 0, sign: 1 },
-        { vec: negate(right), index: 0, sign: -1 },
-        { vec: fwd, index: 2, sign: 1 },
-        { vec: negate(fwd), index: 2, sign: -1 }
-      ];
-
-      var stabilityDot = -2.0;
-      var stableFace = candidates[0];
-
-      for (var i = 0; i < candidates.length; i++) {
-        var d = dot(candidates[i].vec, worldUp);
-        if (d > stabilityDot) { stabilityDot = d; stableFace = candidates[i]; }
-      }
-
-      var targetIndex, targetSign;
-
-      if (stabilityDot > 0.99) {
-        // CASE A: Already limits-stable (Flat)
-        // Don't use Gravity Vector (it destabilizes corner pivots).
-        // Just keep this face.
-        targetIndex = stableFace.index;
-        targetSign = stableFace.sign;
-      } else {
-        // CASE B: Tipping needed
-        // Use Gravity Vector (Center - Pivot) logic
-        var comVector = subtract(objectPosition, pivot);
-        if (length(comVector) < 0.001) comVector = vec3(0, 1, 0);
-        comVector = normalize(comVector);
-
-        var maxDot = -2.0;
-        var fallFace = candidates[0];
-
-        for (var i = 0; i < candidates.length; i++) {
-          var d = dot(candidates[i].vec, comVector);
-          if (d > maxDot) {
-            maxDot = d;
-            fallFace = candidates[i];
-          }
-        }
-
-        // Target UpCandidate is the OPPOSITE of fallFace
-        targetIndex = fallFace.index;
-        targetSign = -fallFace.sign;
-      }
-
-      settlingState = {
-        pivotIdx: bestPivotIdx,
-        faceIndex: targetIndex,
-        faceSign: targetSign
-      };
-    }
-
-    // --- EXECUTE SETTLING using LOCKED State ---
-
-    // 1. Get Pivot in World Space
-    var pivot = getCornerPos(localCorners[settlingState.pivotIdx], objectPosition, objectRotation);
-
-    // 2. Anchor Pivot to Ground (Vertical constraint)
-    var lift = groundLevel - pivot[1];
-    objectPosition[1] += lift;
-    pivot[1] += lift;
-
-    // 3. Rotate towards Target Face
-    var worldUp = vec3(0, 1, 0);
-
-    // Re-extract the specific Target Axis from current rotation
-    // Axis column
-    var colIdx = settlingState.faceIndex;
-    var colVec = vec3(objectRotation[0][colIdx], objectRotation[1][colIdx], objectRotation[2][colIdx]);
-
-    // Apply sign
-    if (settlingState.faceSign < 0) colVec = negate(colVec);
-
-    var currentAxis = colVec; // This is the face normal we want to contain 'Up'
-
-    var d = dot(currentAxis, worldUp);
-
-    if (d > 0.995) {
-      // --- FINAL SETTLE ---
-      // 1. Snap axis perfectly upright
-      var targetAxis = worldUp;
-      // currentAxis is already normalized by extraction logic usually, but safe to:
-      currentAxis = normalize(currentAxis);
-
-      var snapAxis = cross(currentAxis, targetAxis);
-      var snapDot = dot(currentAxis, targetAxis);
-
-      if (length(snapAxis) > 0.0001) {
-        snapAxis = normalize(snapAxis);
-        var snapAngle = Math.acos(Math.min(1, snapDot)) * 180 / Math.PI;
-        var R_snap = rotate(snapAngle, snapAxis);
-        objectRotation = mult(R_snap, objectRotation);
-      }
-
-      // 2. FORCE correct center height
-      objectPosition[1] = h; // h = 0.4
-
-      // 3. EXIT settling
-      settlingState = null;
-      return;
-
-    } else {
-      // Animation
-      var rotAxis = cross(currentAxis, worldUp);
-      var angleDiff = Math.acos(Math.max(-1, Math.min(1, d))) * (180 / Math.PI);
-
-      if (length(rotAxis) > 0.001) {
-        rotAxis = normalize(rotAxis);
-        var speed = 150 * deltaTime;
-        var step = Math.min(speed, angleDiff);
-
-        var R_step = rotate(step, rotAxis);
-        objectRotation = mult(R_step, objectRotation);
-
-        // Compensate Pivot
-        var p_to_c = subtract(objectPosition, pivot);
-
-        var rx = R_step[0][0] * p_to_c[0] + R_step[0][1] * p_to_c[1] + R_step[0][2] * p_to_c[2];
-        var ry = R_step[1][0] * p_to_c[0] + R_step[1][1] * p_to_c[1] + R_step[1][2] * p_to_c[2];
-        var rz = R_step[2][0] * p_to_c[0] + R_step[2][1] * p_to_c[1] + R_step[2][2] * p_to_c[2];
-
-        objectPosition = vec3(pivot[0] + rx, pivot[1] + ry, pivot[2] + rz);
-      }
-    }
-
-  } else {
-    // Falling
-    objectPosition[0] += velocity[0] * deltaTime;
-    objectPosition[1] += velocity[1] * deltaTime;
-    objectPosition[2] += velocity[2] * deltaTime;
-    // If we are in air, ensure state is reset? 
-    // User said "closest face... decided when it reaches ground".
-    // If bounce happens (which we disabled), we might reset.
-    // But we just zero velocity, so it stays on ground.
-  }
-}
 function render() {
-  // Calculate Delta Time
   var now = Date.now();
   var deltaTime = (now - lastTime) / 1000.0;
   lastTime = now;
-
-  // prevent huge dt jumps (e.g. switching tabs)
   if (deltaTime > 0.1) deltaTime = 0.016;
+
+  // Update Projection
+  projectionMatrix = ortho(-zoomLevel, zoomLevel, -zoomLevel, zoomLevel, -50, 50);
+  gl.uniformMatrix4fv(gl.getUniformLocation(program, "projectionMatrix"), false, flatten(projectionMatrix));
 
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  // Update Physics
   updatePhysics(deltaTime);
-
-  if (isAnimating) {
-    handleAnimation();
-  }
-
-  // Check picking every frame (Manual + Animation)
+  if (isAnimating) handleAnimation();
   updatePickingState();
 
   var worldMatrix = mat4();
-  worldMatrix = mult(worldMatrix, rotate(-30, vec3(1, 0, 0)));
-  worldMatrix = mult(worldMatrix, rotate(45, vec3(0, 1, 0)));
+  worldMatrix = mult(worldMatrix, rotate(-cameraElevation, vec3(1, 0, 0)));
+  worldMatrix = mult(worldMatrix, rotate(cameraAzimuth, vec3(0, 1, 0)));
 
   modelViewMatrix = mult(worldMatrix, translate(0.0, -5.0, 0.0));
   ground();
   actualBase();
 
-  // Base
+  // Joint Hierarchy
   modelViewMatrix = mult(modelViewMatrix, rotate(theta[Base], vec3(0, 0.5, 0)));
   base();
 
-  // Lower Arm
   modelViewMatrix = mult(modelViewMatrix, translate(0.0, BASE_HEIGHT, 0.0));
+  jointBox();
+
   modelViewMatrix = mult(modelViewMatrix, rotate(theta[LowerArm], vec3(1, 0, 0)));
   lowerArm();
 
-  // Upper Arm
   modelViewMatrix = mult(modelViewMatrix, translate(0.0, LOWER_ARM_HEIGHT, 0.0));
+  jointBox();
+
   modelViewMatrix = mult(modelViewMatrix, rotate(theta[UpperArm], vec3(1, 0, 0)));
   upperArm();
 
   // Gripper
-  // Translate to end of Upper Arm
   modelViewMatrix = mult(modelViewMatrix, translate(0.0, UPPER_ARM_HEIGHT, 0.0));
-
-  // Apply Gripper Base Rotation (Around Y-axis of arm)
   modelViewMatrix = mult(modelViewMatrix, rotate(theta[GripperBase], vec3(1, 0, 0)));
   gripperBase();
 
   modelViewMatrix = mult(modelViewMatrix, translate(0.0, GRIPPER_BASE_HEIGHT, 0.0));
   gripper();
 
-  // Weight Object
-  var gripperMatrix = modelViewMatrix;
+  // Drop Zone A
+  var savedMatrix = modelViewMatrix;
+  modelViewMatrix = worldMatrix;
+  modelViewMatrix = mult(modelViewMatrix, translate(10.0, -5.0, 0.0));
+  drawDropZoneA();
 
+  // Drop Zone B
+  modelViewMatrix = worldMatrix;
+  modelViewMatrix = mult(modelViewMatrix, translate(-10.0, -5.0, 0.0));
+  drawDropZoneB();
+
+  modelViewMatrix = savedMatrix;
+
+  // Object
+  var gripperMatrix = modelViewMatrix;
   if (isObjectPicked) {
     modelViewMatrix = mult(modelViewMatrix, translate(0, GRIPPER_BASE_HEIGHT, 0));
     weightObject();
@@ -716,11 +539,253 @@ function render() {
     modelViewMatrix = worldMatrix;
     modelViewMatrix = mult(modelViewMatrix, translate(objectPosition[0], objectPosition[1] - 5.0, objectPosition[2]));
     modelViewMatrix = mult(modelViewMatrix, objectRotation);
-
     weightObject();
   }
-
   modelViewMatrix = gripperMatrix;
 
   requestAnimationFrame(render);
+}
+
+
+// =========================================================================
+// GEOMETRY & DRAWING HELPERS
+// =========================================================================
+
+// --- Drop Zone Geometry ---
+function generateDropZoneGeometry() {
+  var ptrs = [];
+  var y = 0.01; // Slightly above ground
+
+  // Box (Line Loop simulated with Lines)
+  // Width 2.0 -> +/- 1.0
+  var b1 = vec4(-1.0, y, 1.0, 1.0);
+  var b2 = vec4(-1.0, y, -1.0, 1.0);
+  var b3 = vec4(1.0, y, -1.0, 1.0);
+  var b4 = vec4(1.0, y, 1.0, 1.0);
+
+  ptrs.push(b1); ptrs.push(b2);
+  ptrs.push(b2); ptrs.push(b3);
+  ptrs.push(b3); ptrs.push(b4);
+  ptrs.push(b4); ptrs.push(b1);
+
+  // Letter A
+  // A tip is 'Top' (-Z), Legs are 'Bottom' (+Z)
+  var aTop = vec4(0, y, -0.4, 1.0);
+  var aBL = vec4(-0.3, y, 0.4, 1.0);
+  var aBR = vec4(0.3, y, 0.4, 1.0);
+  var aMidL = vec4(-0.15, y, 0, 1.0);
+  var aMidR = vec4(0.15, y, 0, 1.0);
+  ptrs.push(aBL); ptrs.push(aTop);
+  ptrs.push(aTop); ptrs.push(aBR);
+  ptrs.push(aMidL); ptrs.push(aMidR);
+
+  numZoneAVertices = ptrs.length; // 8 for box + 6 for A = 14
+
+  // --- Zone B Geometry ---
+  // Box (Same)
+  ptrs.push(b1); ptrs.push(b2);
+  ptrs.push(b2); ptrs.push(b3);
+  ptrs.push(b3); ptrs.push(b4);
+  ptrs.push(b4); ptrs.push(b1);
+
+  // Letter B
+  var bTL = vec4(-0.3, y, -0.4, 1.0);
+  var bBL = vec4(-0.3, y, 0.4, 1.0);
+  var bTR = vec4(0.3, y, -0.4, 1.0); // Top Right
+  var bBR = vec4(0.3, y, 0.4, 1.0); // Bot Right
+  var bML = vec4(-0.3, y, 0.0, 1.0); // Mid Left
+  var bMR = vec4(0.3, y, 0.0, 1.0); // Mid Right
+
+  // Left Vertical
+  ptrs.push(bTL); ptrs.push(bBL);
+  // Top Horizontal
+  ptrs.push(bTL); ptrs.push(bTR);
+  // Middle Horizontal
+  ptrs.push(bML); ptrs.push(bMR);
+  // Bottom Horizontal
+  ptrs.push(bBL); ptrs.push(bBR);
+  // Right Vertical Top
+  ptrs.push(bTR); ptrs.push(bMR);
+  // Right Vertical Bottom
+  ptrs.push(bMR); ptrs.push(bBR);
+
+  return ptrs;
+}
+
+function robotQuad(a, b, c, d) {
+  colors.push(robotVertexColors[a]); points.push(vertices[a]);
+  colors.push(robotVertexColors[a]); points.push(vertices[b]);
+  colors.push(robotVertexColors[a]); points.push(vertices[c]);
+  colors.push(robotVertexColors[a]); points.push(vertices[a]);
+  colors.push(robotVertexColors[a]); points.push(vertices[c]);
+  colors.push(robotVertexColors[a]); points.push(vertices[d]);
+}
+
+function objectQuad(a, b, c, d) {
+  colors.push(objectVertexColors[a]); points.push(vertices[a]);
+  colors.push(objectVertexColors[a]); points.push(vertices[b]);
+  colors.push(objectVertexColors[a]); points.push(vertices[c]);
+  colors.push(objectVertexColors[a]); points.push(vertices[a]);
+  colors.push(objectVertexColors[a]); points.push(vertices[c]);
+  colors.push(objectVertexColors[a]); points.push(vertices[d]);
+}
+
+function groundQuad(a, b, c, d) {
+  colors.push(groundVertexColors[a]); points.push(vertices[a]);
+  colors.push(groundVertexColors[a]); points.push(vertices[b]);
+  colors.push(groundVertexColors[a]); points.push(vertices[c]);
+  colors.push(groundVertexColors[a]); points.push(vertices[a]);
+  colors.push(groundVertexColors[a]); points.push(vertices[c]);
+  colors.push(groundVertexColors[a]); points.push(vertices[d]);
+}
+
+function robotCube() {
+  robotQuad(1, 0, 3, 2);
+  robotQuad(2, 3, 7, 6);
+  robotQuad(3, 0, 4, 7);
+  robotQuad(6, 5, 1, 2);
+  robotQuad(4, 5, 6, 7);
+  robotQuad(5, 4, 0, 1);
+}
+
+function objectCube() {
+  objectQuad(1, 0, 3, 2);
+  objectQuad(2, 3, 7, 6);
+  objectQuad(3, 0, 4, 7);
+  objectQuad(6, 5, 1, 2);
+  objectQuad(4, 5, 6, 7);
+  objectQuad(5, 4, 0, 1);
+}
+
+function groundCube() {
+  groundQuad(1, 0, 3, 2);
+  groundQuad(2, 3, 7, 6);
+  groundQuad(3, 0, 4, 7);
+  groundQuad(6, 5, 1, 2);
+  groundQuad(4, 5, 6, 7);
+  groundQuad(5, 4, 0, 1);
+}
+
+function jointCube() {
+  jointQuad(1, 0, 3, 2);
+  jointQuad(2, 3, 7, 6);
+  jointQuad(3, 0, 4, 7);
+  jointQuad(6, 5, 1, 2);
+  jointQuad(4, 5, 6, 7);
+  jointQuad(5, 4, 0, 1);
+}
+
+function jointQuad(a, b, c, d) {
+  colors.push(jointVertexColors[a]); points.push(vertices[a]);
+  colors.push(jointVertexColors[a]); points.push(vertices[b]);
+  colors.push(jointVertexColors[a]); points.push(vertices[c]);
+  colors.push(jointVertexColors[a]); points.push(vertices[a]);
+  colors.push(jointVertexColors[a]); points.push(vertices[c]);
+  colors.push(jointVertexColors[a]); points.push(vertices[d]);
+}
+
+// --- Component Drawers ---
+
+function bindBuffers(vBuf, cBuf) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBuf);
+  gl.vertexAttribPointer(vPosition, 4, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, cBuf);
+  gl.vertexAttribPointer(vColor, 4, gl.FLOAT, false, 0, 0);
+}
+
+function ground() {
+  bindBuffers(vBufferGround, cBufferGround);
+  var s = scale(GROUND_WIDTH, GROUND_HEIGHT, GROUND_WIDTH);
+  var instanceMatrix = mult(translate(0.0, -0.5 * GROUND_HEIGHT, 0.0), s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix)));
+  gl.drawArrays(gl.TRIANGLES, 0, numGroundVertices);
+}
+
+function actualBase() {
+  bindBuffers(vBufferJoint, cBufferJoint);
+  var s = scale(ACTUAL_BASE_WIDTH, ACTUAL_BASE_HEIGHT, ACTUAL_BASE_WIDTH);
+  var instanceMatrix = mult(translate(0.0, 0.5 * ACTUAL_BASE_HEIGHT, 0.0), s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix)));
+  gl.drawArrays(gl.TRIANGLES, 0, numJointVertices);
+}
+
+function jointBox() {
+  bindBuffers(vBufferJoint, cBufferJoint);
+  var s = scale(JOINT_LENGTH, JOINT_HEIGHT, JOINT_WIDTH);
+  var r = rotate(45, vec3(1, 0, 0));
+  var instanceMatrix = mult(r, s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix)));
+  gl.drawArrays(gl.TRIANGLES, 0, numJointVertices);
+}
+
+function base() {
+  bindBuffers(vBufferRobot, cBufferRobot);
+  var s = scale(BASE_WIDTH, BASE_HEIGHT, BASE_WIDTH);
+  var instanceMatrix = mult(translate(0.0, 0.5 * BASE_HEIGHT, 0.0), s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix)));
+  gl.drawArrays(gl.TRIANGLES, 0, numRobotVertices);
+}
+
+function upperArm() {
+  bindBuffers(vBufferRobot, cBufferRobot);
+  var s = scale(UPPER_ARM_WIDTH, UPPER_ARM_HEIGHT, UPPER_ARM_WIDTH);
+  var instanceMatrix = mult(translate(0.0, 0.5 * UPPER_ARM_HEIGHT, 0.0), s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix)));
+  gl.drawArrays(gl.TRIANGLES, 0, numRobotVertices);
+}
+
+function lowerArm() {
+  bindBuffers(vBufferRobot, cBufferRobot);
+  var s = scale(LOWER_ARM_WIDTH, LOWER_ARM_HEIGHT, LOWER_ARM_WIDTH);
+  var instanceMatrix = mult(translate(0.0, 0.5 * LOWER_ARM_HEIGHT, 0.0), s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix)));
+  gl.drawArrays(gl.TRIANGLES, 0, numRobotVertices);
+}
+
+function gripperBase() {
+  bindBuffers(vBufferRobot, cBufferRobot);
+  var s = scale(GRIPPER_BASE_LENGTH, GRIPPER_BASE_HEIGHT, GRIPPER_BASE_WIDTH);
+  var instanceMatrix = mult(translate(0.0, 0.5 * GRIPPER_BASE_HEIGHT, 0.0), s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix)));
+  gl.drawArrays(gl.TRIANGLES, 0, numRobotVertices);
+}
+
+function gripper() {
+  bindBuffers(vBufferRobot, cBufferRobot);
+  var s = scale(GRIPPER_WIDTH, GRIPPER_HEIGHT, GRIPPER_LENGTH);
+  var d = 0.15 + (theta[Gripper] / 200.0);
+
+  var instanceMatrix1 = mult(translate(d, 0.5 * GRIPPER_HEIGHT, 0.0), s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix1)));
+  gl.drawArrays(gl.TRIANGLES, 0, numRobotVertices);
+
+  var instanceMatrix2 = mult(translate(-d, 0.5 * GRIPPER_HEIGHT, 0.0), s);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, instanceMatrix2)));
+  gl.drawArrays(gl.TRIANGLES, 0, numRobotVertices);
+}
+
+// --- Drop Zone Drawing ---
+function drawDropZoneA() {
+  gl.uniform1i(uUseSolidColorLoc, true);
+  gl.uniform4fv(uSolidColorLoc, COLOR_ZONE);
+  bindBuffers(vBufferZone, cBufferZone);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
+  gl.drawArrays(gl.LINES, 0, numZoneAVertices);
+}
+
+function drawDropZoneB() {
+  gl.uniform1i(uUseSolidColorLoc, true);
+  gl.uniform4fv(uSolidColorLoc, COLOR_ZONE);
+  bindBuffers(vBufferZone, cBufferZone);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
+  gl.drawArrays(gl.LINES, numZoneAVertices, numZoneVertices - numZoneAVertices);
+}
+
+function weightObject() {
+  gl.uniform1i(uUseSolidColorLoc, false);
+  bindBuffers(vBufferObject, cBufferObject);
+
+  var s = scale(0.8, 0.8, 0.8);
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(mult(modelViewMatrix, s)));
+  gl.drawArrays(gl.TRIANGLES, 0, numObjectVertices);
 }
