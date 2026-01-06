@@ -61,6 +61,14 @@ var objectRotation = mat4(); // Identity matrix for rotation
 var GROUND_WIDTH = 40.0;
 var GROUND_HEIGHT = 0.5;
 
+// Physics Constants
+var GRAVITY = 9.8;
+var GROUND_Y = 0.4; // Slightly above 0 to prevent visual clipping
+
+// Physics State
+var velocity = vec3(0.0, 0.0, 0.0);
+var lastTime = 0;
+
 // Initial angles: Base, Lower, Upper, Gripper Base, Gripper
 var theta = [0, 0, 0, 0, 40];
 
@@ -108,118 +116,10 @@ var isReturnCycle = false;
 
 
 
-// ... (Rest of Init) ...
-
-// Animation Loop Logic
-function handleAnimation() {
-  var target = keyframes[animationStep];
-  var done = true;
-  var speed = 1.0;
-
-  // Interpolate each joint
-  for (var i = 0; i < 5; i++) {
-    var diff = target[i] - theta[i];
-    if (Math.abs(diff) > 0.5) {
-      theta[i] += diff * 0.05; // Smooth transition
-      done = false;
-    } else {
-      theta[i] = target[i];
-    }
-  }
-
-  updateUI(); // Keep sliders in sync during animation
-
-  if (done) {
-    animationCounter++;
-    if (animationCounter > 20) { // Pause at keyframe
-      animationStep++;
-      animationCounter = 0;
-      if (animationStep >= keyframes.length) {
-        // Animation sequence complete. Switch direction.
-        animationStep = 0;
-        isReturnCycle = !isReturnCycle;
-
-        if (isReturnCycle) {
-          keyframes = keyframesBackward;
-          updateStatus("Returning (Cycle 2)...");
-        } else {
-          keyframes = keyframesForward;
-          updateStatus("Running Sequence (Cycle 1)...");
-        }
-      }
-    }
-  }
-}
-
-// ... (Rest of code) ...
-
-function render() {
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-  if (isAnimating) {
-    handleAnimation();
-  }
-
-  // Check picking every frame (Manual + Animation)
-  updatePickingState();
-
-  var worldMatrix = mat4();
-  worldMatrix = mult(worldMatrix, rotate(-30, vec3(1, 0, 0)));
-  worldMatrix = mult(worldMatrix, rotate(45, vec3(0, 1, 0)));
-
-  modelViewMatrix = mult(worldMatrix, translate(0.0, -5.0, 0.0));
-  ground();
-  actualBase();
-
-  // Base
-  modelViewMatrix = mult(modelViewMatrix, rotate(theta[Base], vec3(0, 0.5, 0)));
-  base();
-
-  // Lower Arm
-  modelViewMatrix = mult(modelViewMatrix, translate(0.0, BASE_HEIGHT, 0.0));
-  modelViewMatrix = mult(modelViewMatrix, rotate(theta[LowerArm], vec3(1, 0, 0)));
-  lowerArm();
-
-  // Upper Arm
-  modelViewMatrix = mult(modelViewMatrix, translate(0.0, LOWER_ARM_HEIGHT, 0.0));
-  modelViewMatrix = mult(modelViewMatrix, rotate(theta[UpperArm], vec3(1, 0, 0)));
-  upperArm();
-
-  // Gripper Base and Fingers
-  // Translate to end of Upper Arm
-  modelViewMatrix = mult(modelViewMatrix, translate(0.0, UPPER_ARM_HEIGHT, 0.0));
-
-  // Gripper Base Rotation
-  modelViewMatrix = mult(modelViewMatrix, rotate(theta[GripperBase], vec3(1, 0, 0)));
-  gripperBase();
-
-  modelViewMatrix = mult(modelViewMatrix, translate(0.0, GRIPPER_BASE_HEIGHT, 0.0));
-  gripper();
-
-  // Weight Object
-  var gripperMatrix = modelViewMatrix;
-
-  if (isObjectPicked) {
-    modelViewMatrix = mult(modelViewMatrix, rotate(-90, vec3(1, 0, 0)));
-    // Removed the X offset (translate(0.5 * GRIPPER_BASE_WIDTH, ...)) to center object
-    weightObject();
-  } else {
-    modelViewMatrix = worldMatrix;
-    // Apply object position (Translate)
-    modelViewMatrix = mult(modelViewMatrix, translate(objectPosition[0], objectPosition[1] - 4.5, objectPosition[2]));
-    // Apply object rotation (Rotation)
-    modelViewMatrix = mult(modelViewMatrix, objectRotation);
-
-    weightObject();
-  }
-
-  modelViewMatrix = gripperMatrix;
-
-  requestAnimationFrame(render);
-}
 
 // Initialize the application
 window.onload = function init() {
+  lastTime = Date.now();
   canvas = document.getElementById("gl-canvas");
   gl = canvas.getContext("webgl2");
   if (!gl) alert("WebGL 2.0 isn't available");
@@ -532,8 +432,50 @@ function weightObject() {
   gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
 }
 
+function updatePhysics(deltaTime) {
+  if (isObjectPicked) {
+    velocity = vec3(0, 0, 0); // Reset velocity while holding
+  } else {
+    // Apply Gravity
+    velocity[1] -= GRAVITY * deltaTime;
+
+    // Apply Velocity to Position
+    objectPosition[0] += velocity[0] * deltaTime;
+    objectPosition[1] += velocity[1] * deltaTime;
+    objectPosition[2] += velocity[2] * deltaTime;
+
+    // Ground Collision Detection
+    // Ground level defined at objectPosition.y = GROUND_Y
+    if (objectPosition[1] <= GROUND_Y) {
+      objectPosition[1] = GROUND_Y;
+
+      // Simple Bounce / Stop
+      if (Math.abs(velocity[1]) > 0.5) {
+        velocity[1] *= -0.3; // Bounce damping
+      } else {
+        velocity[1] = 0;
+      }
+
+      // Friction (simple stop)
+      velocity[0] *= 0.9;
+      velocity[2] *= 0.9;
+    }
+  }
+}
+
 function render() {
+  // Calculate Delta Time
+  var now = Date.now();
+  var deltaTime = (now - lastTime) / 1000.0;
+  lastTime = now;
+
+  // prevent huge dt jumps (e.g. switching tabs)
+  if (deltaTime > 0.1) deltaTime = 0.016;
+
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  // Update Physics
+  updatePhysics(deltaTime);
 
   if (isAnimating) {
     handleAnimation();
@@ -579,17 +521,11 @@ function render() {
   var gripperMatrix = modelViewMatrix;
 
   if (isObjectPicked) {
-    modelViewMatrix = mult(modelViewMatrix, rotate(-90, vec3(1, 0, 0)));
-    // Removed the X offset (translate(0.5 * GRIPPER_BASE_WIDTH, ...)) to center object
+    modelViewMatrix = mult(modelViewMatrix, translate(0, GRIPPER_BASE_HEIGHT, 0));
     weightObject();
   } else {
     modelViewMatrix = worldMatrix;
-    // Apply object position (Translate)
-    modelViewMatrix = mult(modelViewMatrix, translate(objectPosition[0], objectPosition[1] - 4.5, objectPosition[2]));
-    // Apply object rotation (Rotation)
-    // objectRotation should be a rotation matrix.
-    // Note: objectPosition is already relative to WorldMatrix(Scene). 
-    // And objectRotation is also calculated relative to World in picking.js
+    modelViewMatrix = mult(modelViewMatrix, translate(objectPosition[0], objectPosition[1] - 5.0, objectPosition[2]));
     modelViewMatrix = mult(modelViewMatrix, objectRotation);
 
     weightObject();

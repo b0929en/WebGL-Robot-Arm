@@ -24,29 +24,23 @@ function updatePickingState() {
   if (isObjectPicked) {
     // Handling Release
     if (gripperAngle > pickingThresholdAngle) {
-      if (isAboveGround) {
-        // CONSTRAINT: Cannot open gripper if object is in air
-        theta[Gripper] = 40; // Force closed
-        // Update UI to reflect forced value
-        document.getElementById("slider5").value = 40;
-        document.getElementById("val5").innerText = "Closed";
-      } else {
-        // Release Object
-        isObjectPicked = false;
-        // Update Object Position/Rotation to stay where it was dropped
-        // New Position is Gripper Position (minus offset if needed, but let's say it drops at gripper center)
-        objectPosition = vec3(gripperPosition[0], gripperPosition[1], gripperPosition[2]);
+      // Release Object
+      isObjectPicked = false;
+      // Update Object Position/Rotation to stay where it was dropped
+      // New Position is Gripper Position (minus offset if needed, but let's say it drops at gripper center)
+      objectPosition = vec3(gripperPosition[0], gripperPosition[1], gripperPosition[2]);
 
-        // Update Rotation
-        // Zero out translation from matrix to get rotation only
-        var rot = mat4(
-          gripperMatrix[0][0], gripperMatrix[0][1], gripperMatrix[0][2], 0,
-          gripperMatrix[1][0], gripperMatrix[1][1], gripperMatrix[1][2], 0,
-          gripperMatrix[2][0], gripperMatrix[2][1], gripperMatrix[2][2], 0,
-          0, 0, 0, 1
-        );
-        objectRotation = rot;
-      }
+      // Update Rotation
+      // Zero out translation from matrix to get rotation only
+      var rot = mat4(
+        gripperMatrix[0][0], gripperMatrix[0][1], gripperMatrix[0][2], 0,
+        gripperMatrix[1][0], gripperMatrix[1][1], gripperMatrix[1][2], 0,
+        gripperMatrix[2][0], gripperMatrix[2][1], gripperMatrix[2][2], 0,
+        0, 0, 0, 1
+      );
+      objectRotation = rot;
+
+      // If we are high up, the physics engine in robotArm.js will take care of falling.
     }
   } else {
     // Handling Pick
@@ -84,9 +78,8 @@ function getGripperTransform() {
   // 5. Move to Gripper Fingers Base / Tip
   m = mult(m, translate(0.0, GRIPPER_BASE_HEIGHT, 0.0));
 
-  // Add offset to where the object is held (approx -2.5 down from base if hanging)
-  // But for "Tip" position we might want just the base center.
-  // Let's use the Base position for calculation consistency.
+  // EXTRA VISUAL OFFSET matching robotArm.js logic
+  m = mult(m, translate(0.0, GRIPPER_BASE_HEIGHT, 0.0));
 
   return m;
 }
