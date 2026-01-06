@@ -54,6 +54,8 @@ var isDragging = false;
 var lastMouseX = 0;
 var lastMouseY = 0;
 
+var keys = {};
+
 var keyframesForward = [
   [0, 30, -60, -60, 80],   // 0: Home
   [-90, 30, -60, -60, 80],  // 1: Align with object A
@@ -357,24 +359,19 @@ function setupSliders() {
 
 function setupKeyboard() {
   document.addEventListener('keydown', function (event) {
-    if (isAnimating) return;
+    var key = event.key.toLowerCase();
+    keys[key] = true;
 
-    switch (event.key.toLowerCase()) {
-      case 'a':
-      case 'arrowleft': theta[Base] = Math.max(-180, theta[Base] - 5); break;
-      case 'd':
-      case 'arrowright': theta[Base] = Math.min(180, theta[Base] + 5); break;
-      case 'w':
-      case 'arrowup': theta[LowerArm] = Math.min(60, theta[LowerArm] + 5); break;
-      case 's':
-      case 'arrowdown': theta[LowerArm] = Math.max(-60, theta[LowerArm] - 5); break;
-      case 'q': theta[UpperArm] = Math.min(120, theta[UpperArm] + 5); break;
-      case 'e': theta[UpperArm] = Math.max(-120, theta[UpperArm] - 5); break;
-      case 'z': theta[GripperBase] = Math.max(-60, theta[GripperBase] - 5); break;
-      case 'c': theta[GripperBase] = Math.min(60, theta[GripperBase] + 5); break;
-      case 'x': theta[Gripper] = (theta[Gripper] > 70) ? 60 : 80; break;
+    // Toggle Gripper immediately on press (not continuous)
+    if (key === 'x') {
+      theta[Gripper] = (theta[Gripper] > 70) ? 60 : 80;
+      updateUI();
     }
-    updateUI();
+  });
+
+  document.addEventListener('keyup', function (event) {
+    var key = event.key.toLowerCase();
+    keys[key] = false;
   });
 }
 
@@ -396,6 +393,33 @@ function updateUI() {
   document.getElementById("val3").innerText = Math.round(theta[UpperArm]) + "°";
   document.getElementById("val4").innerText = Math.round(theta[GripperBase]) + "°";
   document.getElementById("val5").innerText = theta[Gripper] < 70 ? "Closed" : "Open";
+}
+
+function handleKeys(deltaTime) {
+  if (isAnimating) return;
+
+  var speed = 100.0 * deltaTime; // Degrees per second
+
+  // Base (A / D)
+  if (keys['a'] || keys['arrowleft']) theta[Base] = Math.max(-180, theta[Base] - speed);
+  if (keys['d'] || keys['arrowright']) theta[Base] = Math.min(180, theta[Base] + speed);
+
+  // Lower Arm (W / S)
+  if (keys['w'] || keys['arrowup']) theta[LowerArm] = Math.min(60, theta[LowerArm] + speed);
+  if (keys['s'] || keys['arrowdown']) theta[LowerArm] = Math.max(-60, theta[LowerArm] - speed);
+
+  // Upper Arm (Q / E)
+  if (keys['q']) theta[UpperArm] = Math.min(120, theta[UpperArm] + speed);
+  if (keys['e']) theta[UpperArm] = Math.max(-120, theta[UpperArm] - speed);
+
+  // Gripper Base (Z / C)
+  if (keys['z']) theta[GripperBase] = Math.max(-60, theta[GripperBase] - speed);
+  if (keys['c']) theta[GripperBase] = Math.min(60, theta[GripperBase] + speed);
+
+  // Sync UI if any key is pressed
+  if (Object.values(keys).some(k => k)) {
+    updateUI();
+  }
 }
 
 function updateStatus(msg) {
@@ -483,6 +507,8 @@ function render() {
 
   updatePhysics(deltaTime);
   if (isAnimating) handleAnimation();
+  else handleKeys(deltaTime);
+
   updatePickingState();
 
   var worldMatrix = mat4();
