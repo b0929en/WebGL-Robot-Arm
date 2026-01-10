@@ -47,6 +47,7 @@ function stopAnimation() {
 function resetArm() {
   stopAnimation();
   theta = [0, 30, -60, -60, 90];
+  targetTheta = [0, 30, -60, -60, 90]; // Sync target
   isObjectPicked = false;
   objectPosition = vec3(10.0, 0.0, 0.0);
   objectRotation = mult(rotate(-90, vec3(0, 1, 0)), rotate(-90, vec3(1, 0, 0)));

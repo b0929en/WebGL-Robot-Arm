@@ -42,7 +42,7 @@ function setupKeyboard() {
 
     // Toggle Gripper immediately on press (not continuous)
     if (key === 'x') {
-      theta[Gripper] = (theta[Gripper] > 80) ? 70 : 90;
+      targetTheta[Gripper] = (targetTheta[Gripper] > 80) ? 70 : 90;
       updateUI();
     }
   });
@@ -59,20 +59,20 @@ function handleKeys(deltaTime) {
   var speed = 100.0 * deltaTime; // Degrees per second
 
   // Base (A / D)
-  if (keys['a'] || keys['arrowleft']) theta[Base] = Math.max(-180, theta[Base] - speed);
-  if (keys['d'] || keys['arrowright']) theta[Base] = Math.min(180, theta[Base] + speed);
+  if (keys['a'] || keys['arrowleft']) targetTheta[Base] = Math.max(-180, targetTheta[Base] - speed);
+  if (keys['d'] || keys['arrowright']) targetTheta[Base] = Math.min(180, targetTheta[Base] + speed);
 
   // Lower Arm (W / S)
-  if (keys['w'] || keys['arrowup']) theta[LowerArm] = Math.min(60, theta[LowerArm] + speed);
-  if (keys['s'] || keys['arrowdown']) theta[LowerArm] = Math.max(-60, theta[LowerArm] - speed);
+  if (keys['w'] || keys['arrowup']) targetTheta[LowerArm] = Math.min(60, targetTheta[LowerArm] + speed);
+  if (keys['s'] || keys['arrowdown']) targetTheta[LowerArm] = Math.max(-60, targetTheta[LowerArm] - speed);
 
   // Upper Arm (Q / E)
-  if (keys['q']) theta[UpperArm] = Math.min(120, theta[UpperArm] + speed);
-  if (keys['e']) theta[UpperArm] = Math.max(-120, theta[UpperArm] - speed);
+  if (keys['q']) targetTheta[UpperArm] = Math.min(120, targetTheta[UpperArm] + speed);
+  if (keys['e']) targetTheta[UpperArm] = Math.max(-120, targetTheta[UpperArm] - speed);
 
   // Gripper Base (Z / C)
-  if (keys['z']) theta[GripperBase] = Math.max(-60, theta[GripperBase] - speed);
-  if (keys['c']) theta[GripperBase] = Math.min(60, theta[GripperBase] + speed);
+  if (keys['z']) targetTheta[GripperBase] = Math.max(-60, targetTheta[GripperBase] - speed);
+  if (keys['c']) targetTheta[GripperBase] = Math.min(60, targetTheta[GripperBase] + speed);
 
   // Sync UI if any key is pressed
   if (Object.values(keys).some(k => k)) {

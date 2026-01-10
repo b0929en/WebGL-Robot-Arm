@@ -35,10 +35,14 @@
       <input id="slider4" type="range" min="-60" max="60" step="5" value="-60">
     </div>
 
-    <!-- Gripper Control -->
     <div class="control-group">
-      <label for="slider5">Gripper <span id="val5">Open</span></label>
-      <input id="slider5" type="range" min="70" max="90" step="20" value="90">
+      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <label for="gripperSwitch" style="margin-bottom: 0; cursor: pointer;">Gripper</label>
+        <label class="switch">
+          <input type="checkbox" id="gripperSwitch">
+          <span class="slider"></span>
+        </label>
+      </div>
     </div>
 
 

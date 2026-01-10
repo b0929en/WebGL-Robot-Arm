@@ -35,6 +35,7 @@ var GROUND_HEIGHT = 0.5;
 // --- Application State ---
 // Joints: Base, Lower, Upper, Gripper Base, Gripper
 var theta = [0, 30, -60, -60, 90];
+var targetTheta = [0, 30, -60, -60, 90]; // Command state for servo smoothing
 
 // Weight Object State
 var isObjectPicked = false;
@@ -220,6 +221,19 @@ window.onload = function init() {
   render();
 };
 
+function updateServos(deltaTime) {
+  var speed = 10.0; // Interpolation speed
+  for (var i = 0; i < 5; i++) {
+    // Simple P-controller
+    var diff = targetTheta[i] - theta[i];
+    if (Math.abs(diff) > 0.01) {
+      theta[i] += diff * speed * deltaTime;
+    } else {
+      theta[i] = targetTheta[i];
+    }
+  }
+}
+
 // =========================================================================
 // RENDER LOOP
 // =========================================================================
@@ -237,8 +251,15 @@ function render() {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   updatePhysics(deltaTime);
-  if (isAnimating) handleAnimation();
-  else handleKeys(deltaTime);
+  updatePhysics(deltaTime);
+  if (isAnimating) {
+    handleAnimation();
+    // Sync target to current to prevent snapping when stopping
+    for (var i = 0; i < 5; i++) targetTheta[i] = theta[i];
+  } else {
+    handleKeys(deltaTime);
+    updateServos(deltaTime);
+  }
 
   updatePickingState();
 
