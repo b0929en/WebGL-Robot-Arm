@@ -4,6 +4,8 @@
 // KEYFRAME DATA
 // =========================================================================
 
+var keyframes = keyframesForward;
+
 var keyframesForward = [
   [0, 30, -60, -60, 90],   // 0: Home
   [-90, 30, -60, -60, 90],  // 1: Align with object A
@@ -27,5 +29,3 @@ var keyframesBackward = [
   [-90, -10, -120, 40, 90],  // 7: Lift Empty A
   [0, 30, -60, -60, 90]         // 8: Return Home
 ];
-
-var keyframes = keyframesForward;
